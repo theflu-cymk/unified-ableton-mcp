@@ -10,7 +10,7 @@ so adding a module means editing one place and the two stay in sync.
 GROUP_MODULES = {
     "session": ["session"],
     "tracks": ["tracks"],
-    "clips": ["clips"],
+    "clips": ["clips", "warp_groove"],
     "devices": ["devices", "device_kb"],
     "browser": ["browser"],
     "arrangement": ["arrangement"],
@@ -26,7 +26,7 @@ GROUP_MODULES = {
 GROUP_DESCRIPTIONS = {
     "session": "transport, tempo, tap tempo, groove/swing, scenes, locators, record modes, song scale and tuning, Ableton Link, one-call snapshot",
     "tracks": "create/delete MIDI/audio/return tracks, delete devices, take lanes, group fold, volume/pan/mute/solo/arm/sends, routing, meters, crossfader",
-    "clips": "create clips, write/edit MIDI notes (probability), quantize with strength, groove, loop, warp, pitch/gain",
+    "clips": "create clips, write/edit MIDI notes (probability), quantize with strength, groove, loop, warp markers, pitch/gain",
     "devices": "browse/search and load devices onto any track incl Master and Returns, read/set any param, sidechain routing, rack macro variations, Simpler slicing, per-pad drum control, device knowledge base",
     "browser": "navigate the browser, load, and preview samples and presets",
     "arrangement": "place/read/delete arrangement clips, write clip automation",

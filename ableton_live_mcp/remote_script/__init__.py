@@ -359,6 +359,10 @@ class AbletonMCP(ControlSurface):
         "set_clip_groove": lambda s, p: s._set_clip_groove(s._req(p, "track_index"), s._req(p, "clip_index"), p.get("groove_index")),
         "set_clip_loop": lambda s, p: s._set_clip_loop(s._req(p, "track_index"), s._req(p, "clip_index"), p),
         "set_clip_audio": lambda s, p: s._set_clip_audio(s._req(p, "track_index"), s._req(p, "clip_index"), p),
+        "add_warp_marker": lambda s, p: s._add_warp_marker(s._req(p, "track_index"), s._req(p, "clip_index"), s._req(p, "beat_time"), p.get("sample_time")),
+        "move_warp_marker": lambda s, p: s._move_warp_marker(s._req(p, "track_index"), s._req(p, "clip_index"), s._req(p, "beat_time"), s._req(p, "beat_time_distance")),
+        "remove_warp_marker": lambda s, p: s._remove_warp_marker(s._req(p, "track_index"), s._req(p, "clip_index"), s._req(p, "beat_time")),
+        "set_groove_params": lambda s, p: s._set_groove_params(p.get("groove_index", -1), p.get("timing_amount"), p.get("random_amount"), p.get("velocity_amount"), p.get("quantization_amount"), p.get("base"), p.get("global_amount")),
         "quantize_clip": lambda s, p: s._quantize_clip(s._req(p, "track_index"), s._req(p, "clip_index"), p.get("grid", "sixteenth"), p.get("amount", 1.0)),
         "fire_clip": lambda s, p: s._fire_clip(s._req(p, "track_index"), s._req(p, "clip_index")),
         "stop_clip": lambda s, p: s._stop_clip(s._req(p, "track_index"), s._req(p, "clip_index")),
@@ -451,6 +455,8 @@ class AbletonMCP(ControlSurface):
         "get_locators": lambda s, p: s._get_locators(),
         "get_track_routing": lambda s, p: s._get_track_routing(s._req(p, "track_index")),
         "get_clip_info": lambda s, p: s._get_clip_info(s._req(p, "track_index"), s._req(p, "clip_index")),
+        "get_warp_markers": lambda s, p: s._get_warp_markers(s._req(p, "track_index"), s._req(p, "clip_index")),
+        "get_groove_pool": lambda s, p: s._get_groove_pool(),
         "get_rack_chains": lambda s, p: s._get_rack_chains(s._req(p, "track_index"), s._req(p, "device_index")),
         "get_drum_pads": lambda s, p: s._get_drum_pads(s._req(p, "track_index"), s._req(p, "device_index")),
         "get_session_snapshot": lambda s, p: s._get_session_snapshot(),
@@ -1365,6 +1371,81 @@ class AbletonMCP(ControlSurface):
         if "warp_mode" in params:
             clip.warp_mode = int(params["warp_mode"])
             applied["warp_mode"] = clip.warp_mode
+        return applied
+
+
+    # ── Grafted warp markers + groove (nicholasbien) ─────────────────
+    def _warp_marker_list(self, clip):
+        return [{"beat_time": m.beat_time, "sample_time": m.sample_time} for m in getattr(clip, "warp_markers", [])]
+
+    def _get_warp_markers(self, track_index, clip_index):
+        clip = self._get_clip(track_index, clip_index)
+        if not clip.is_audio_clip:
+            raise Exception("Not an audio clip")
+        return {"clip": clip.name, "warping": clip.warping, "warp_markers": self._warp_marker_list(clip)}
+
+    def _add_warp_marker(self, track_index, clip_index, beat_time, sample_time=None):
+        import Live
+        clip = self._get_clip(track_index, clip_index)
+        if not clip.is_audio_clip:
+            raise Exception("Not an audio clip")
+        if not clip.warping:
+            raise Exception("Turn warping on first (set_clip_audio warping=True)")
+        beat_time = float(beat_time)
+        if sample_time is None:
+            sample_time = clip.beat_to_sample_time(beat_time)
+        clip.add_warp_marker(Live.Clip.WarpMarker(sample_time=float(sample_time), beat_time=beat_time))
+        return {"clip": clip.name, "warp_markers": self._warp_marker_list(clip)}
+
+    def _move_warp_marker(self, track_index, clip_index, beat_time, beat_time_distance):
+        clip = self._get_clip(track_index, clip_index)
+        if not clip.is_audio_clip:
+            raise Exception("Not an audio clip")
+        clip.move_warp_marker(float(beat_time), float(beat_time_distance))
+        return {"clip": clip.name, "warp_markers": self._warp_marker_list(clip)}
+
+    def _remove_warp_marker(self, track_index, clip_index, beat_time):
+        clip = self._get_clip(track_index, clip_index)
+        if not clip.is_audio_clip:
+            raise Exception("Not an audio clip")
+        clip.remove_warp_marker(float(beat_time))
+        return {"clip": clip.name, "warp_markers": self._warp_marker_list(clip)}
+
+    def _get_groove_pool(self):
+        pool = self._song.groove_pool
+        grooves = []
+        for i, g in enumerate(pool.grooves):
+            grooves.append({
+                "index": i,
+                "name": getattr(g, "name", ""),
+                "timing_amount": getattr(g, "timing_amount", None),
+                "random_amount": getattr(g, "random_amount", None),
+                "velocity_amount": getattr(g, "velocity_amount", None),
+                "quantization_amount": getattr(g, "quantization_amount", None),
+                "base": getattr(g, "base", None),
+            })
+        return {"grooves": grooves, "global_amount": getattr(pool, "groove_amount", None)}
+
+    def _set_groove_params(self, groove_index, timing_amount=None, random_amount=None,
+                           velocity_amount=None, quantization_amount=None, base=None, global_amount=None):
+        pool = self._song.groove_pool
+        applied = {}
+        if global_amount is not None:
+            pool.groove_amount = float(global_amount)
+            applied["global_amount"] = pool.groove_amount
+        if groove_index is not None and int(groove_index) >= 0:
+            g = pool.grooves[int(groove_index)]
+            if timing_amount is not None:
+                g.timing_amount = float(timing_amount)
+            if random_amount is not None:
+                g.random_amount = float(random_amount)
+            if velocity_amount is not None:
+                g.velocity_amount = float(velocity_amount)
+            if quantization_amount is not None:
+                g.quantization_amount = float(quantization_amount)
+            if base is not None:
+                g.base = int(base)
+            applied["groove_index"] = int(groove_index)
         return applied
 
     # -- track creation --
